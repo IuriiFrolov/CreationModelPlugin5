@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Autodesk.Revit.ApplicationServices;
 
 namespace CreationModelPlugin5
 {
@@ -62,25 +63,178 @@ namespace CreationModelPlugin5
         {
             List<XYZ> points = CreatePointsWall(doc, widthInMilimeters, depthInMilimeters);
 
-            List<Wall> oWalls = new List<Wall>();
+            List<Wall> walls = new List<Wall>();
             Transaction transaction = new Transaction(doc, "Построение стен");
             transaction.Start();
             for (int i = 0; i < 4; i++)
             {
                 Line line = Line.CreateBound(points[i], points[i + 1]); // Ось стены из 2 точек
                 Wall wall = Wall.Create(doc, line, level1.Id, false); // Создаем стену (в активном документе, по линии заданной 2 точками, на 1 уровне низ стены, НЕ НЕСУЩАЯ)
-                oWalls.Add(wall); // Добавляем стену в лист (список) "Стены"
+                walls.Add(wall); // Добавляем стену в лист (список) "Стены"
                 wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(level2.Id);  // устанавливаем высоту стены до 2 уровня
             }
 
-            AddDoor(doc, level1, oWalls[0]);
-            AddWindow(doc, level1, oWalls[1]);
-            AddWindow(doc, level1, oWalls[2]);
-            AddWindow(doc, level1, oWalls[3]);
+            AddDoor(doc, level1, walls[0]);
+            AddWindow(doc, level1, walls[1]);
+            AddWindow(doc, level1, walls[2]);
+            AddWindow(doc, level1, walls[3]);
+            //AddRoofLesson4(doc, level2, walls);
+            AddRoofHomeWork(doc, level2, walls, widthInMilimeters);
 
             transaction.Commit();
-            return oWalls;
+            return walls;
 
+        }
+        //  Д/З замените метод NewFootPrintRoof методом NewExtrusionRoof
+        // Метод создания крыши 2х скатной экструзивная
+        private void AddRoofHomeWork(Document doc, Level level2, List<Wall> walls, double widthInMilimeters)
+        {
+            RoofType roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault(); //элемент а не коллекция
+
+            double wallWidth = walls[0].Width;
+            double dt = wallWidth / 2;
+
+            var heightParametr = walls[0].get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM);
+            double heightWall = heightParametr.AsDouble();
+            double heightRoof = heightWall + 7;
+
+
+            List<XYZ> points = new List<XYZ>();
+            points.Add(new XYZ(-dt, -dt, 0)); //0
+            points.Add(new XYZ(dt, -dt, heightWall)); //1
+            points.Add(new XYZ(dt, dt, heightRoof)); //2
+            points.Add(new XYZ(-dt, dt, 0));  //3
+            points.Add(new XYZ(-dt, -dt, 0)); //0
+            points.Add(new XYZ(0, dt, heightWall)); //1
+
+         
+
+            //var heightParametr = Wall.Parameter[BuiltInParameter.WALL_USER_HEIGHT_PARAM];
+            // double height = 
+
+            Application application = doc.Application;
+            
+
+            CurveArray curveArray = new CurveArray();
+            //curveArray.Append(Line.CreateBound(new XYZ(0, 0, 0), new XYZ(0, 20, 20)));
+           // curveArray.Append(Line.CreateBound(new XYZ(0, 20, 20), new XYZ(0, 40, 0)));
+           
+                LocationCurve curve1 = walls[1].Location as LocationCurve;
+                XYZ p1 = curve1.Curve.GetEndPoint(0);
+                XYZ p3 = curve1.Curve.GetEndPoint(1);
+            XYZ p2 = (p1 + p3) / 2;
+
+            curveArray.Append(Line.CreateBound(p1 + points[1], p2 + points[2]));
+                curveArray.Append(Line.CreateBound(p2 + points[2], p3 + points[5]));
+
+            double oWidth = UnitUtils.ConvertToInternalUnits(widthInMilimeters, UnitTypeId.Millimeters);
+            double dx = (oWidth / 2)+1.64042; // длина стены + свес 
+
+
+
+
+            //  Д/З замените метод NewFootPrintRoof методом NewExtrusionRoof
+            ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0)
+                , new XYZ(0, 0, 20)
+                , new XYZ(0, 20, 0)
+                , doc.ActiveView);
+
+            ExtrusionRoof extrusionRoof = doc.Create
+                .NewExtrusionRoof(curveArray, plane, level2, roofType, -dx, dx);
+
+            // .NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+
+            //foreach (ModelCurve m in footPrintToModelCurveMapping)
+            //{
+            //    footprintRoof.set_DefinesSlope(m, true);
+            //    footprintRoof.set_SlopeAngle(m, 0.5);
+            //}
+
+
+            //FootPrintRoof footprintRoof = doc.Create.NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+            //foreach (ModelCurve m in footPrintToModelCurveMapping)
+            //{
+            //    footprintRoof.set_DefinesSlope(m, true);
+            //    footprintRoof.set_SlopeAngle(m, 0.5);
+            //}
+        }
+
+
+
+        // Метод создания крыши 4х скатной по лекции 
+        private void AddRoofLesson4(Document doc, Level level2, List<Wall> walls)
+        {
+            RoofType roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault(); //элемент а не коллекция
+
+            double wallWidth = walls[0].Width;
+            double dt = wallWidth / 2;
+            List<XYZ> points = new List<XYZ>();
+            points.Add(new XYZ(-dt, -dt, 0));
+            points.Add(new XYZ(dt, -dt, 0));
+            points.Add(new XYZ(dt, dt, 0));
+            points.Add(new XYZ(-dt, dt, 0));
+            points.Add(new XYZ(-dt, -dt, 0));
+
+
+            Application application = doc.Application;
+            CurveArray footprint = application.Create.NewCurveArray(); // отпечаток по которому будет построена крыша
+            for (int i = 0; i < 4; i++)
+            {
+                LocationCurve curve = walls[i].Location as LocationCurve;
+                XYZ p1 = curve.Curve.GetEndPoint(0);
+                XYZ p2 = curve.Curve.GetEndPoint(1);
+                Line line = Line.CreateBound(p1 + points[i], p2 + points[i + 1]);
+                footprint.Append(line);
+            }
+            ModelCurveArray footPrintToModelCurveMapping = new ModelCurveArray();
+            FootPrintRoof footprintRoof = doc.Create
+                .NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+
+            foreach (ModelCurve m in footPrintToModelCurveMapping)
+            {
+                footprintRoof.set_DefinesSlope(m, true);
+                footprintRoof.set_SlopeAngle(m, 0.5);
+            }
+
+
+
+            //CurveArray curveArray = new CurveArray();
+            //curveArray.Append(Line.CreateBound(new XYZ(0, 0, 0), new XYZ(0, 20, 20)));
+            //curveArray.Append(Line.CreateBound(new XYZ(0, 20, 20), new XYZ(0, 40, 0)));
+            ////  Д/З замените метод NewFootPrintRoof методом NewExtrusionRoof
+            //ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0)
+            //    , new XYZ(0, 0, 20)
+            //    , new XYZ(0, 20, 0)
+            //    , doc.ActiveView);
+            
+            //ExtrusionRoof extrusionRoof = doc.Create
+            //    .NewExtrusionRoof(curveArray, plane, level2, roofType, 0, 40);
+
+           // .NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+
+            //foreach (ModelCurve m in footPrintToModelCurveMapping)
+            //{
+            //    footprintRoof.set_DefinesSlope(m, true);
+            //    footprintRoof.set_SlopeAngle(m, 0.5);
+            //}
+
+
+            //FootPrintRoof footprintRoof = doc.Create.NewFootPrintRoof(footprint, level2, roofType, out footPrintToModelCurveMapping);
+            //foreach (ModelCurve m in footPrintToModelCurveMapping)
+            //{
+            //    footprintRoof.set_DefinesSlope(m, true);
+            //    footprintRoof.set_SlopeAngle(m, 0.5);
+            //}
         }
 
         private void AddDoor(Document doc, Level level1, Wall wall)
